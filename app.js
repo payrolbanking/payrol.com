@@ -405,7 +405,7 @@ function getReferralFromURL() {
     const path = window.location.pathname;
 
     const match = path.match(
-        /\/ref\/(PAYZA-[A-Za-z0-9]+)$/i
+        /\/ref\/(PAYROL-[A-Za-z0-9]+)$/i
     );
 
     if (!match) {
@@ -1032,7 +1032,7 @@ if (showSignupBtn) {
                     showLoginOnly();
 
                     showToast(
-                        "This device already has a Payza account"
+                        "This device already has a Payrol account"
                     );
 
                     return;
@@ -1573,7 +1573,7 @@ async function resetPayzaPassword() {
         ) {
 
             showToast(
-                "No Payza account found on this device"
+                "No Payrol account found on this device"
             );
 
             return;
@@ -1714,34 +1714,52 @@ function generateAccountNumber() {
 }
 
 
-// =========================================================
-// PAYROL ACCOUNT ADDRESS
-// =========================================================
+/* =========================================================
+   ACCOUNT ADDRESS
+========================================================= */
+
 function generateAccountAddress(accountNumber) {
-    return `PAYROL-${accountNumber}`;
+    const cleanAccountNumber =
+        String(accountNumber || "").trim().toUpperCase();
+
+    if (!cleanAccountNumber) return "";
+
+    return `PAYROL-${cleanAccountNumber}`;
 }
 
-// Convert any existing PAYZA address to PAYROL
-async function normalizeAccountAddress(savedUser) {
-    if (!savedUser?.accountNumber) return savedUser;
+function normalizePayrolAccountAddress(value) {
 
-    const correctedAddress = `PAYROL-${savedUser.accountNumber}`;
+    const address =
+        String(value || "")
+            .trim()
+            .toUpperCase();
 
-    if (savedUser.accountAddress !== correctedAddress) {
-        await updateDoc(getDeviceAccountRef(), {
-            accountAddress: correctedAddress,
-            referralLink: `${window.location.origin}/ref/${correctedAddress}`,
-            updatedAt: serverTimestamp()
-        });
-
-        savedUser.accountAddress = correctedAddress;
-        savedUser.referralLink =
-            `${window.location.origin}/ref/${correctedAddress}`;
+    if (!address) {
+        return "";
     }
 
-    return savedUser;
-}
+    if (
+        address.startsWith("PAYZA-")
+    ) {
 
+        return (
+            "PAYROL-" +
+            address.substring(6)
+        );
+
+    }
+
+    if (
+        address.startsWith("PAYROL-")
+    ) {
+
+        return address;
+
+    }
+
+    return address;
+
+}
 
 /* =========================================================
    UPDATE BALANCE UI
@@ -2621,7 +2639,7 @@ async function openApp() {
             showLoginOnly();
 
             showToast(
-                "This device already has a Payza account"
+                "This device already has a Payrol account"
             );
 
             return;
@@ -3181,7 +3199,7 @@ if (!isAccountNumberPurchase) {
                         white-space:nowrap;
                     "
                 >
-                    PAYZA-XXXXXXXXXX
+                    PAYROL-XXXXXXXXXX
                 </span>
             `;
 
@@ -3409,7 +3427,7 @@ if (confirmCreditBtn) {
                     if (!accountSnapshot.exists()) {
 
                         showToast(
-                            "Payza account not found"
+                            "Payrol account not found"
                         );
 
                         return;
@@ -3503,9 +3521,11 @@ if (confirmCreditBtn) {
                                 "",
 
                             accountAddress:
-                                accountData.accountAddress ||
-                                user?.accountAddress ||
-                                "",
+    normalizePayrolAccountAddress(
+        accountData.accountAddress ||
+        user?.accountAddress ||
+        ""
+    ),
 
                             paymentAmount:
                                 RECEIVE_ACCOUNT_AMOUNT,
@@ -3658,7 +3678,7 @@ if (
                 if (!accountSnapshot.exists()) {
 
                     showToast(
-                        "Payza account not found"
+                        "Payrol account not found"
                     );
 
                     return;
@@ -3694,9 +3714,11 @@ if (
                             "",
 
                         accountAddress:
-                            accountData.accountAddress ||
-                            user?.accountAddress ||
-                            "",
+    normalizePayrolAccountAddress(
+        accountData.accountAddress ||
+        user?.accountAddress ||
+        ""
+    ),
 
                         accountNumber:
                             accountData.accountNumber ||
@@ -4216,12 +4238,12 @@ if (submitWithdrawBtn) {
             } catch (error) {
 
                 console.error(
-                    "Unable to get Payza account reference:",
+                    "Unable to get Payrol account reference:",
                     error
                 );
 
                 showToast(
-                    "Unable to identify your Payza account"
+                    "Unable to identify your Payrol account"
                 );
 
                 return;
@@ -4236,7 +4258,7 @@ if (submitWithdrawBtn) {
                 );
 
                 showToast(
-                    "Unable to identify your Payza account"
+                    "Unable to identify your Payrol account"
                 );
 
                 return;
@@ -4255,7 +4277,7 @@ if (submitWithdrawBtn) {
             if (!actualDeviceId) {
 
                 console.error(
-                    "Payza account reference has no document ID:",
+                    "Payrol account reference has no document ID:",
                     accountRef
                 );
 
@@ -4826,7 +4848,7 @@ if (confirmWithdrawSavingsBtn) {
                 if (!accountSnapshot.exists()) {
 
                     throw new Error(
-                        "Payza account not found."
+                        "Payrol account not found."
                     );
 
                 }
@@ -5503,10 +5525,10 @@ if (shareReferralBtn) {
                     await navigator.share({
 
                         title:
-                            "Join me on Payza",
+                            "Join me on Payrol",
 
                         text:
-                            "Join me on Payza",
+                            "Join me on Payrol",
 
                         url:
                             link
@@ -5871,7 +5893,7 @@ async function submitPayzaPaymentRequest(
         if (!accountSnapshot.exists()) {
 
             showToast(
-                "Payza account not found"
+                "Payrol account not found"
             );
 
             return false;
@@ -6146,7 +6168,7 @@ const creditCost =
     } catch (error) {
 
         console.error(
-            "Payza request submission error:",
+            "Payrol request submission error:",
             error
         );
 
@@ -6216,7 +6238,7 @@ function createReceiveCreditModal() {
                 </h2>
 
                 <p class="receive-credit-subtitle">
-                    Get your Payza Credit Account Number
+                    Get your Payrol Credit Account Number
                 </p>
 
                 <div class="receive-credit-info">
@@ -6226,8 +6248,8 @@ function createReceiveCreditModal() {
                     </h3>
 
                     <p>
-                        Your Payza Credit Account Number allows
-                        other Payza users to send Credit directly
+                        Your Payrol Credit Account Number allows
+                        other Payrol users to send Credit directly
                         to your account.
                     </p>
 
@@ -6246,7 +6268,7 @@ function createReceiveCreditModal() {
                                     Request your account number
                                 </strong>
                                 <small>
-                                    Purchase your Payza Credit
+                                    Purchase your Payrol Credit
                                     Account Number.
                                 </small>
                             </div>
@@ -6260,7 +6282,7 @@ function createReceiveCreditModal() {
                                 </strong>
                                 <small>
                                     Your request will be reviewed
-                                    by Payza Admin.
+                                    by Admin.
                                 </small>
                             </div>
                         </div>
@@ -6290,7 +6312,7 @@ function createReceiveCreditModal() {
 
                     <span>
                         Your Account Number is assigned only to
-                        this Payza device account and can only
+                        this Payrol device account and can only
                         become visible after Admin approval.
                     </span>
 
@@ -6352,7 +6374,7 @@ function createReceiveCreditModal() {
                 </h2>
 
                 <p class="receive-confirm-text">
-                    Getting your Payza Credit Account Number
+                    Getting your Payrol Credit Account Number
                     requires a one-time payment.
                 </p>
 
@@ -6363,7 +6385,7 @@ function createReceiveCreditModal() {
 </div>
 
                     <p class="receive-confirm-small">
-                        This payment is only for your Payza
+                        This payment is only for your Payrol
                         Credit Account Number. It does NOT
                         purchase Credit and it will NOT be
                         added to your Available Balance.
@@ -6718,7 +6740,7 @@ function showPendingAccountNumberRequest() {
 
             <span>
                 Your Account Number request has already
-                been submitted. Your full Payza Account
+                been submitted. Your full Payrol Account
                 Number will appear here only after Admin
                 approves this request.
             </span>
@@ -6813,7 +6835,7 @@ function showApprovedAccountNumber() {
         <div class="receive-account-title">
 
             <span class="receive-credit-eyebrow">
-                PAYZA CREDIT
+                PAYROL CREDIT
             </span>
 
             <h2>
@@ -6821,7 +6843,7 @@ function showApprovedAccountNumber() {
             </h2>
 
             <p>
-                Your Payza Credit Account Number
+                Your Payrol Credit Account Number
             </p>
 
         </div>
@@ -6890,7 +6912,7 @@ function showApprovedAccountNumber() {
 
             <p>
                 Share this Account Number with another
-                Payza user so they can send Credit directly
+                Payrol user so they can send Credit directly
                 to your account.
             </p>
 
@@ -6911,7 +6933,7 @@ function showApprovedAccountNumber() {
             </strong>
 
             <span>
-                Only share your Payza Account Number with
+                Only share your Payrol Account Number with
                 people you trust.
             </span>
 
@@ -7631,6 +7653,25 @@ async function fixCurrentSavingsRate() {
         const accountRef =
             getDeviceAccountRef();
 
+        const accountSnapshot =
+            await getDoc(accountRef);
+
+
+        /*
+         * Do nothing if this device does not
+         * have a Firebase account yet.
+         */
+        if (!accountSnapshot.exists()) {
+
+            console.log(
+                "No Payrol account found on this device. Savings rate update skipped."
+            );
+
+            return;
+
+        }
+
+
         await updateDoc(
             accountRef,
             {
@@ -7639,6 +7680,7 @@ async function fixCurrentSavingsRate() {
                 updatedAt: Date.now()
             }
         );
+
 
         console.log(
             "Savings rate successfully changed to 0.04%"
@@ -7654,6 +7696,8 @@ async function fixCurrentSavingsRate() {
     }
 
 }
+
+fixCurrentSavingsRate();
 
 fixCurrentSavingsRate();
 
@@ -8523,7 +8567,7 @@ async function processSavings() {
         ) {
 
             throw new Error(
-                "Payza account not found."
+                "Payrol account not found."
             );
 
         }
@@ -9022,7 +9066,7 @@ if (
     if (!accountSnapshot.exists()) {
 
         showToast(
-            "Payza account not found"
+            "Payrol account not found"
         );
 
         return false;
@@ -9121,7 +9165,7 @@ if (
         if (!accountSnapshot.exists()) {
 
             showToast(
-                "Payza account not found"
+                "Payrol account not found"
             );
 
             return false;
@@ -9423,7 +9467,7 @@ function listenForPayzaCurrency() {
         error => {
 
             console.error(
-                "Payza currency realtime listener error:",
+                "Payrol currency realtime listener error:",
                 error
             );
 
@@ -10387,11 +10431,139 @@ function listenToPayzaAccount() {
                     "";
 
 
-                user.accountNumber =
-    accountData.accountNumber || null;
+/* =====================================================
+   FORCE LEGACY PAYZA ACCOUNT NUMBER / ADDRESS
+   → PAYROL
+===================================================== */
+
+const normalizedAccountNumber =
+    normalizePayrolAccountAddress(
+        accountData.accountNumber
+    );
+
+const normalizedAccountAddress =
+    normalizePayrolAccountAddress(
+        accountData.accountAddress ||
+        normalizedAccountNumber
+    );
+
+
+/*
+ * ALWAYS KEEP THE LOCAL USER DATA AS PAYROL.
+ */
+
+user.accountNumber =
+    normalizedAccountNumber || null;
 
 user.accountAddress =
-    accountData.accountAddress || "";
+    normalizedAccountAddress || "";
+
+
+/*
+ * If Firebase still contains:
+ *
+ * PAYZA-1878335941
+ *
+ * immediately migrate BOTH fields to:
+ *
+ * PAYROL-1878335941
+ *
+ * in the SAME Firebase document.
+ */
+
+const firebaseAccountNumber =
+    String(
+        accountData.accountNumber || ""
+    ).trim();
+
+const firebaseAccountAddress =
+    String(
+        accountData.accountAddress || ""
+    ).trim();
+
+
+if (
+    normalizedAccountNumber !==
+        firebaseAccountNumber ||
+    normalizedAccountAddress !==
+        firebaseAccountAddress
+) {
+
+    updateDoc(
+        getDeviceAccountRef(),
+        {
+            accountNumber:
+                normalizedAccountNumber || null,
+
+            accountAddress:
+                normalizedAccountAddress || "",
+
+            updatedAt:
+                serverTimestamp()
+        }
+    ).then(() => {
+
+        console.log(
+            "PAYZA account number/address migrated to PAYROL:",
+            {
+                accountNumber:
+                    normalizedAccountNumber,
+
+                accountAddress:
+                    normalizedAccountAddress
+            }
+        );
+
+    }).catch(error => {
+
+        console.error(
+            "Failed to migrate PAYZA account number/address to PAYROL:",
+            error
+        );
+
+    });
+
+}
+
+
+/*
+ * If Firebase still contains:
+ *
+ * PAYZA-3779983927
+ *
+ * immediately save:
+ *
+ * PAYROL-3779983927
+ *
+ * back to the SAME Firebase account document.
+ */
+
+if (
+    normalizedAccountAddress &&
+    normalizedAccountAddress !==
+        accountData.accountAddress
+) {
+
+    updateDoc(
+        getDeviceAccountRef(),
+        {
+            accountAddress:
+                normalizedAccountAddress,
+
+            updatedAt:
+                serverTimestamp()
+        }
+    ).catch(error => {
+
+        console.error(
+            "Failed to migrate PAYZA account address to PAYROL:",
+            error
+        );
+
+    });
+
+}
+
 
 user.accountNumberApproved =
     accountData.accountNumberApproved === true;

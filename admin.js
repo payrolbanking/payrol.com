@@ -3863,16 +3863,21 @@ function listenForAccountNumberRequests() {
                                         "Unknown Account",
 
 
-                                    accountAddress:
-                                        accountData.accountAddress ||
-                                        request.accountAddress ||
-                                        "",
+                                  accountAddress:
+    normalizePayrolAccountNumber(
+        accountData.accountAddress ||
+        request.accountAddress ||
+        accountData.accountNumber ||
+        request.accountNumber ||
+        ""
+    ),
 
-
-                                    accountNumber:
-                                        accountData.accountNumber ||
-                                        request.accountNumber ||
-                                        null,
+accountNumber:
+    normalizePayrolAccountNumber(
+        accountData.accountNumber ||
+        request.accountNumber ||
+        ""
+    ) || null,
 
 
                                     balance:
@@ -3932,6 +3937,10 @@ function listenForAccountNumberRequests() {
     );
 
 }
+
+/* =========================================================
+   APPROVE ACCOUNT NUMBER REQUEST
+========================================================= */
 
 /* =========================================================
    APPROVE ACCOUNT NUMBER REQUEST
@@ -4004,7 +4013,7 @@ async function approveAccountNumberRequest(requestId) {
 
 
     /*
-     * Find the EXACT Payza account belonging
+     * Find the EXACT Payrol account belonging
      * to the requester.
      */
     const accountRef =
@@ -4022,7 +4031,7 @@ async function approveAccountNumberRequest(requestId) {
     if (!accountSnapshot.exists()) {
 
         throw new Error(
-            "Payza account for this requester was not found."
+            "Payrol account for this requester was not found."
         );
 
     }
@@ -4048,16 +4057,58 @@ async function approveAccountNumberRequest(requestId) {
     }
 
 
-    /*
-     * If this device already has an approved
-     * Account Number, use that same number.
-     *
-     * NEVER generate another number.
-     */
+    /* =====================================================
+       IF AN ACCOUNT NUMBER ALREADY EXISTS
+       ===================================================== */
+
     if (
         accountData.accountNumberApproved === true &&
         accountData.accountNumber
     ) {
+
+        const existingAccountNumber =
+            normalizePayrolAccountNumber(
+                accountData.accountNumber
+            );
+
+
+        if (!existingAccountNumber) {
+
+            throw new Error(
+                "The existing Account Number is invalid."
+            );
+
+        }
+
+
+        /*
+         * IMPORTANT:
+         * Convert any old PAYZA- number to PAYROL-
+         * and save it back to Firebase.
+         */
+        await updateDoc(
+            accountRef,
+            {
+
+                accountNumber:
+                    existingAccountNumber,
+
+                accountAddress:
+                    existingAccountNumber,
+
+                accountNumberApproved:
+                    true,
+
+                accountNumberApprovedAt:
+                    accountData.accountNumberApprovedAt ||
+                    serverTimestamp(),
+
+                updatedAt:
+                    serverTimestamp()
+
+            }
+        );
+
 
         await updateDoc(
             requestRef,
@@ -4066,11 +4117,14 @@ async function approveAccountNumberRequest(requestId) {
                 status:
                     "approved",
 
+                accountNumber:
+                    existingAccountNumber,
+
+                accountAddress:
+                    existingAccountNumber,
+
                 accountNumberApproved:
                     true,
-
-                accountNumber:
-                    accountData.accountNumber,
 
                 approvedAt:
                     serverTimestamp(),
@@ -4082,9 +4136,15 @@ async function approveAccountNumberRequest(requestId) {
         );
 
 
+        await addActivity(
+            "Account Number Approved",
+            `${request.accountName || request.userName || "Account"} was assigned Account Number ${existingAccountNumber}.`
+        );
+
+
         showToast(
             "Account Number Approved",
-            `${accountData.accountNumber} is already assigned to this account.`
+            `${existingAccountNumber} is already assigned to this account.`
         );
 
 
@@ -4093,9 +4153,10 @@ async function approveAccountNumberRequest(requestId) {
     }
 
 
-    /*
-     * Generate a unique Account Number.
-     */
+    /* =====================================================
+       GENERATE NEW UNIQUE ACCOUNT NUMBER
+       ===================================================== */
+
     let accountNumber = null;
 
 
@@ -4112,16 +4173,18 @@ async function approveAccountNumberRequest(requestId) {
             ).toString();
 
 
+        /*
+         * ALWAYS generate PAYROL-
+         */
         const candidate =
-            `PAYZA-${randomDigits}`;
+            normalizePayrolAccountNumber(
+                `PAYROL-${randomDigits}`
+            );
 
 
         const existingQuery =
             query(
-                collection(
-                    db,
-                    "payzaAccounts"
-                ),
+                payzaAccountsRef,
                 where(
                     "accountNumber",
                     "==",
@@ -4157,20 +4220,18 @@ async function approveAccountNumberRequest(requestId) {
     }
 
 
-    /*
-     * =====================================================
-     * SAVE ACCOUNT NUMBER TO EXACT USER ACCOUNT
-     * =====================================================
-     *
-     * NO balance change.
-     * NO credit added.
-     * NO money added.
-     */
+    /* =====================================================
+       SAVE ACCOUNT NUMBER TO EXACT USER ACCOUNT
+       ===================================================== */
+
     await updateDoc(
         accountRef,
         {
 
             accountNumber:
+                accountNumber,
+
+            accountAddress:
                 accountNumber,
 
             accountNumberRequested:
@@ -4189,11 +4250,10 @@ async function approveAccountNumberRequest(requestId) {
     );
 
 
-    /*
-     * =====================================================
-     * APPROVE ONLY THIS REQUEST
-     * =====================================================
-     */
+    /* =====================================================
+       APPROVE ONLY THIS REQUEST
+       ===================================================== */
+
     await updateDoc(
         requestRef,
         {
@@ -4202,6 +4262,9 @@ async function approveAccountNumberRequest(requestId) {
                 "approved",
 
             accountNumber:
+                accountNumber,
+
+            accountAddress:
                 accountNumber,
 
             accountNumberApproved:
@@ -4224,7 +4287,7 @@ async function approveAccountNumberRequest(requestId) {
 
 
     console.log(
-        "ACCOUNT NUMBER GENERATED:",
+        "PAYROL ACCOUNT NUMBER GENERATED:",
         accountNumber,
         "FOR DEVICE:",
         deviceId,
@@ -4237,6 +4300,77 @@ async function approveAccountNumberRequest(requestId) {
         "Account Number Approved",
         `${accountNumber} has been generated and assigned to the requester.`
     );
+
+}
+
+
+/* =========================================================
+   NORMALIZE ACCOUNT NUMBER
+========================================================= */
+
+function normalizePayrolAccountNumber(value) {
+
+    const number =
+        String(value || "")
+            .trim()
+            .toUpperCase();
+
+
+    if (!number) {
+
+        return "";
+
+    }
+
+
+    /*
+     * Convert OLD PAYZA numbers.
+     *
+     * PAYZA-1878335941
+     * becomes
+     * PAYROL-1878335941
+     */
+    if (
+        number.startsWith("PAYZA-")
+    ) {
+
+        return (
+            "PAYROL-" +
+            number.substring(6)
+        );
+
+    }
+
+
+    /*
+     * Already correct.
+     */
+    if (
+        number.startsWith("PAYROL-")
+    ) {
+
+        return number;
+
+    }
+
+
+    /*
+     * If only 10 digits were supplied,
+     * add PAYROL-.
+     */
+    if (
+        /^\d{10}$/.test(number)
+    ) {
+
+        return (
+            "PAYROL-" +
+            number
+        );
+
+    }
+
+
+    return number;
 
 }
 
@@ -4885,12 +5019,16 @@ async function listenForCreditRequests() {
                                  * =================================================
                                  */
                                 const accountAddress =
-                                    request.accountAddress ??
-                                    request.address ??
-                                    request.payzaAddress ??
-                                    accountData.accountAddress ??
-                                    accountData.address ??
-                                    "";
+    normalizePayrolAccountNumber(
+        request.accountAddress ??
+        request.address ??
+        request.payzaAddress ??
+        accountData.accountAddress ??
+        accountData.address ??
+        accountData.accountNumber ??
+        request.accountNumber ??
+        ""
+    );
 
 
                                 /*
