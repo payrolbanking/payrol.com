@@ -1111,57 +1111,123 @@ if (
 
 async function loginAccount() {
     try {
-        // ============================================================
-        // GET THE PASSWORD FROM THE ACTUAL VISIBLE LOGIN FIELD
-        // ============================================================
+        // --------------------------------------------------------
+        // FIND THE PASSWORD THE USER ACTUALLY ENTERED
+        // --------------------------------------------------------
 
-        let passwordInput = document.getElementById("loginPassword");
+        let password = "";
 
-        // If #loginPassword does not exist, find a visible password input
-        if (!passwordInput) {
-            const passwordFields = document.querySelectorAll(
-                'input[type="password"]'
-            );
+        // First: look inside the login screen
+        const loginView = document.getElementById("loginView");
 
-            for (const field of passwordFields) {
-                const style = window.getComputedStyle(field);
+        if (loginView) {
+            const inputs = loginView.querySelectorAll("input");
+
+            // Look for a password-looking field first
+            for (const input of inputs) {
+                const type = (input.type || "").toLowerCase();
+                const id = (input.id || "").toLowerCase();
+                const name = (input.name || "").toLowerCase();
+                const placeholder = (input.placeholder || "").toLowerCase();
+
+                const looksLikePassword =
+                    type === "password" ||
+                    id.includes("password") ||
+                    id.includes("pass") ||
+                    name.includes("password") ||
+                    name.includes("pass") ||
+                    placeholder.includes("password") ||
+                    placeholder.includes("pass");
+
+                if (looksLikePassword && input.value.trim() !== "") {
+                    password = input.value.trim();
+                    break;
+                }
+            }
+
+            // If no password-looking field was found,
+            // use any non-empty visible input in the login view.
+            if (!password) {
+                for (const input of inputs) {
+                    const style = window.getComputedStyle(input);
+
+                    if (
+                        style.display !== "none" &&
+                        style.visibility !== "hidden" &&
+                        input.offsetParent !== null &&
+                        input.value.trim() !== ""
+                    ) {
+                        password = input.value.trim();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // --------------------------------------------------------
+        // FALLBACK: SEARCH ALL VISIBLE INPUTS
+        // --------------------------------------------------------
+
+        if (!password) {
+            const inputs = document.querySelectorAll("input");
+
+            for (const input of inputs) {
+                const style = window.getComputedStyle(input);
 
                 if (
-                    style.display !== "none" &&
-                    style.visibility !== "hidden" &&
-                    field.offsetParent !== null
+                    style.display === "none" ||
+                    style.visibility === "hidden" ||
+                    input.offsetParent === null
                 ) {
-                    passwordInput = field;
+                    continue;
+                }
+
+                const type = (input.type || "").toLowerCase();
+                const id = (input.id || "").toLowerCase();
+                const name = (input.name || "").toLowerCase();
+
+                const looksLikePassword =
+                    type === "password" ||
+                    id.includes("password") ||
+                    id.includes("pass") ||
+                    name.includes("password") ||
+                    name.includes("pass");
+
+                if (
+                    looksLikePassword &&
+                    input.value.trim() !== ""
+                ) {
+                    password = input.value.trim();
                     break;
                 }
             }
         }
 
-        const password = passwordInput
-            ? passwordInput.value.trim()
-            : "";
-
-        console.log(
-            "Login password field:",
-            passwordInput ? passwordInput.id : "NOT FOUND"
-        );
-
-        console.log(
-            "Login password entered:",
-            password.length > 0 ? "YES" : "NO"
-        );
+        // --------------------------------------------------------
+        // PASSWORD CHECK
+        // --------------------------------------------------------
 
         if (!password) {
+            console.error(
+                "LOGIN: No password value was found in the login form."
+            );
+
             showToast("Please enter your password.");
             return;
         }
 
-        // ============================================================
-        // GET DEVICE ID
-        // ============================================================
+        console.log(
+            "LOGIN: Password detected. Length:",
+            password.length
+        );
+
+        // --------------------------------------------------------
+        // DEVICE ID
+        // --------------------------------------------------------
 
         if (!payzaDeviceId) {
-            payzaDeviceId = localStorage.getItem(PAYZA_DEVICE_KEY);
+            payzaDeviceId =
+                localStorage.getItem(PAYZA_DEVICE_KEY);
         }
 
         if (!payzaDeviceId) {
@@ -1169,36 +1235,40 @@ async function loginAccount() {
             return;
         }
 
-        // ============================================================
-        // NORMAL USER LOGIN
-        // ============================================================
+        // --------------------------------------------------------
+        // LOAD ACCOUNT
+        // --------------------------------------------------------
 
         const accountRef = getDeviceAccountRef();
 
         const snapshot = await getDoc(accountRef);
 
         if (!snapshot.exists()) {
-            showToast("Account not found. Please create an account first.");
+            showToast(
+                "Account not found. Please create an account first."
+            );
             return;
         }
 
         const savedUser = snapshot.data();
 
-        // ============================================================
-        // CHECK DEVICE
-        // ============================================================
+        // --------------------------------------------------------
+        // VERIFY DEVICE
+        // --------------------------------------------------------
 
         if (
             savedUser.deviceId &&
             savedUser.deviceId !== payzaDeviceId
         ) {
-            showToast("This account does not belong to this device.");
+            showToast(
+                "This account does not belong to this device."
+            );
             return;
         }
 
-        // ============================================================
-        // CHECK PASSWORD
-        // ============================================================
+        // --------------------------------------------------------
+        // VERIFY PASSWORD
+        // --------------------------------------------------------
 
         const enteredPasswordHash =
             await hashPayzaPassword(password);
@@ -1211,9 +1281,9 @@ async function loginAccount() {
             return;
         }
 
-        // ============================================================
+        // --------------------------------------------------------
         // LOGIN SUCCESS
-        // ============================================================
+        // --------------------------------------------------------
 
         currentUser = {
             ...savedUser,
@@ -1230,31 +1300,35 @@ async function loginAccount() {
             JSON.stringify(currentUser)
         );
 
-        // ============================================================
-        // UPDATE UI
-        // ============================================================
+        // --------------------------------------------------------
+        // UPDATE USER INTERFACE
+        // --------------------------------------------------------
 
         if (typeof updateUserUI === "function") {
             updateUserUI();
         }
 
-        // ============================================================
-        // REALTIME ACCOUNT LISTENER
-        // ============================================================
+        // --------------------------------------------------------
+        // START REALTIME ACCOUNT LISTENER
+        // --------------------------------------------------------
 
         if (typeof listenForPayzaAccount === "function") {
             listenForPayzaAccount();
-        } else if (typeof listenToPayzaAccount === "function") {
+        } else if (
+            typeof listenToPayzaAccount === "function"
+        ) {
             listenToPayzaAccount();
         }
 
-        // ============================================================
-        // SHOW APP
-        // ============================================================
+        // --------------------------------------------------------
+        // SHOW APPLICATION
+        // --------------------------------------------------------
 
-        const loginView = document.getElementById("loginView");
-        const signupView = document.getElementById("signupView");
-        const appView = document.getElementById("appView");
+        const signupView =
+            document.getElementById("signupView");
+
+        const appView =
+            document.getElementById("appView");
 
         if (loginView) {
             loginView.style.display = "none";
