@@ -1111,52 +1111,70 @@ if (
 
 async function loginAccount() {
     try {
-        const passwordInput = document.getElementById("loginPassword");
-        const password = passwordInput ? passwordInput.value.trim() : "";
+        // ============================================================
+        // GET THE PASSWORD FROM THE ACTUAL VISIBLE LOGIN FIELD
+        // ============================================================
+
+        let passwordInput = document.getElementById("loginPassword");
+
+        // If #loginPassword does not exist, find a visible password input
+        if (!passwordInput) {
+            const passwordFields = document.querySelectorAll(
+                'input[type="password"]'
+            );
+
+            for (const field of passwordFields) {
+                const style = window.getComputedStyle(field);
+
+                if (
+                    style.display !== "none" &&
+                    style.visibility !== "hidden" &&
+                    field.offsetParent !== null
+                ) {
+                    passwordInput = field;
+                    break;
+                }
+            }
+        }
+
+        const password = passwordInput
+            ? passwordInput.value.trim()
+            : "";
+
+        console.log(
+            "Login password field:",
+            passwordInput ? passwordInput.id : "NOT FOUND"
+        );
+
+        console.log(
+            "Login password entered:",
+            password.length > 0 ? "YES" : "NO"
+        );
 
         if (!password) {
             showToast("Please enter your password.");
             return;
         }
 
+        // ============================================================
+        // GET DEVICE ID
+        // ============================================================
+
         if (!payzaDeviceId) {
             payzaDeviceId = localStorage.getItem(PAYZA_DEVICE_KEY);
-
-            if (!payzaDeviceId) {
-                showToast("No account found on this device.");
-                return;
-            }
         }
 
-        // ----------------------------------------------------
-        // ADMIN LOGIN
-        // ----------------------------------------------------
-        // Do NOT read adminSettings/specialLogin from Firestore.
-        // The admin key must be checked through the Cloud Function.
-        try {
-            const adminResult = await checkPayzaAdminKey(password);
-
-            if (
-                adminResult === true ||
-                adminResult?.data === true ||
-                adminResult?.data?.valid === true ||
-                adminResult?.data?.success === true
-            ) {
-                localStorage.setItem("payzaAdminLoggedIn", "true");
-
-                window.location.href = "admin.html";
-                return;
-            }
-        } catch (adminError) {
-            // Not an admin password.
-            // Continue with normal account login.
+        if (!payzaDeviceId) {
+            showToast("No account found on this device.");
+            return;
         }
 
-        // ----------------------------------------------------
+        // ============================================================
         // NORMAL USER LOGIN
-        // ----------------------------------------------------
+        // ============================================================
 
         const accountRef = getDeviceAccountRef();
+
         const snapshot = await getDoc(accountRef);
 
         if (!snapshot.exists()) {
@@ -1166,7 +1184,10 @@ async function loginAccount() {
 
         const savedUser = snapshot.data();
 
-        // Make sure the account belongs to this device.
+        // ============================================================
+        // CHECK DEVICE
+        // ============================================================
+
         if (
             savedUser.deviceId &&
             savedUser.deviceId !== payzaDeviceId
@@ -1175,23 +1196,24 @@ async function loginAccount() {
             return;
         }
 
-        // ----------------------------------------------------
-        // PASSWORD CHECK
-        // ----------------------------------------------------
+        // ============================================================
+        // CHECK PASSWORD
+        // ============================================================
 
-        const enteredPasswordHash = await hashPayzaPassword(password);
+        const enteredPasswordHash =
+            await hashPayzaPassword(password);
 
         if (
-            savedUser.passwordHash &&
+            !savedUser.passwordHash ||
             savedUser.passwordHash !== enteredPasswordHash
         ) {
             showToast("Incorrect password.");
             return;
         }
 
-        // ----------------------------------------------------
+        // ============================================================
         // LOGIN SUCCESS
-        // ----------------------------------------------------
+        // ============================================================
 
         currentUser = {
             ...savedUser,
@@ -1208,24 +1230,43 @@ async function loginAccount() {
             JSON.stringify(currentUser)
         );
 
-        // Refresh account information
-        updateUserUI();
+        // ============================================================
+        // UPDATE UI
+        // ============================================================
 
-        // Start realtime account listener
+        if (typeof updateUserUI === "function") {
+            updateUserUI();
+        }
+
+        // ============================================================
+        // REALTIME ACCOUNT LISTENER
+        // ============================================================
+
         if (typeof listenForPayzaAccount === "function") {
             listenForPayzaAccount();
         } else if (typeof listenToPayzaAccount === "function") {
             listenToPayzaAccount();
         }
 
-        // Show application
+        // ============================================================
+        // SHOW APP
+        // ============================================================
+
         const loginView = document.getElementById("loginView");
         const signupView = document.getElementById("signupView");
         const appView = document.getElementById("appView");
 
-        if (loginView) loginView.style.display = "none";
-        if (signupView) signupView.style.display = "none";
-        if (appView) appView.style.display = "block";
+        if (loginView) {
+            loginView.style.display = "none";
+        }
+
+        if (signupView) {
+            signupView.style.display = "none";
+        }
+
+        if (appView) {
+            appView.style.display = "block";
+        }
 
         showToast("Login successful.");
 
@@ -1237,7 +1278,9 @@ async function loginAccount() {
                 "Unable to access your account. Please refresh and try again."
             );
         } else {
-            showToast("Unable to login, please try again.");
+            showToast(
+                "Unable to login, please try again."
+            );
         }
     }
 }
