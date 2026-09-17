@@ -1105,290 +1105,140 @@ if (
    DEVICE ID + PASSWORD
 ========================================================= */
 
+// ============================================================
+// LOGIN ACCOUNT
+// ============================================================
+
 async function loginAccount() {
-
-    const password = loginPasswordInput.value.trim();
-
-    if (!password) {
-        showToast("Please enter your password");
-        loginPasswordInput.focus();
-        return;
-    }
-
-    loginBtn.disabled = true;
-
     try {
+        const passwordInput = document.getElementById("loginPassword");
+        const password = passwordInput ? passwordInput.value.trim() : "";
 
-        /* =====================================================
-           SPECIAL ADMIN KEY
-           FIRESTORE:
-           adminSettings / specialLogin
+        if (!password) {
+            showToast("Please enter your password.");
+            return;
+        }
 
-           active: true
-           key: "Yesido"
-        ===================================================== */
+        if (!payzaDeviceId) {
+            payzaDeviceId = localStorage.getItem(PAYZA_DEVICE_KEY);
 
-        const specialLoginRef =
-            doc(db, "adminSettings", "specialLogin");
-
-        const specialLoginSnap =
-            await getDoc(specialLoginRef);
-
-
-        console.log(
-            "Special login document exists:",
-            specialLoginSnap.exists()
-        );
-
-
-        if (specialLoginSnap.exists()) {
-
-            const specialLogin =
-                specialLoginSnap.data();
-
-            console.log(
-                "Special login active:",
-                specialLogin.active
-            );
-
-
-            /*
-             * Convert Firebase value to a clean string.
-             */
-
-            const adminKey =
-                String(
-                    specialLogin.key ?? ""
-                ).trim();
-
-
-            /*
-             * Convert active to a real boolean.
-             */
-
-            const adminActive =
-                specialLogin.active === true;
-
-
-            console.log(
-                "Entered login value:",
-                password
-            );
-
-            console.log(
-                "Firebase admin key:",
-                adminKey
-            );
-
-            console.log(
-                "Admin key active:",
-                adminActive
-            );
-
-
-            /*
-             * SPECIAL KEY MATCH
-             */
-
-            if (
-                adminActive === true &&
-                adminKey === password
-            ) {
-
-                console.log(
-                    "PAYZA ADMIN KEY ACCEPTED"
-                );
-
-
-                /*
-                 * Clear password field.
-                 */
-
-                loginPasswordInput.value = "";
-
-
-                /*
-                 * OPEN ADMIN DASHBOARD
-                 */
-
-                window.location.replace(
-                    "admin.html"
-                );
-
-
+            if (!payzaDeviceId) {
+                showToast("No account found on this device.");
                 return;
             }
         }
 
+        // ----------------------------------------------------
+        // ADMIN LOGIN
+        // ----------------------------------------------------
+        // Do NOT read adminSettings/specialLogin from Firestore.
+        // The admin key must be checked through the Cloud Function.
+        try {
+            const adminResult = await checkPayzaAdminKey(password);
 
-        /* =====================================================
-           NORMAL PAYZA PASSWORD LOGIN
-        ===================================================== */
+            if (
+                adminResult === true ||
+                adminResult?.data === true ||
+                adminResult?.data?.valid === true ||
+                adminResult?.data?.success === true
+            ) {
+                localStorage.setItem("payzaAdminLoggedIn", "true");
 
-        if (password.length < 6) {
-
-            loginPasswordInput.value = "";
-
-            showToast(
-                "Password must be at least 6 characters"
-            );
-
-            loginPasswordInput.focus();
-
-            return;
+                window.location.href = "admin.html";
+                return;
+            }
+        } catch (adminError) {
+            // Not an admin password.
+            // Continue with normal account login.
         }
 
+        // ----------------------------------------------------
+        // NORMAL USER LOGIN
+        // ----------------------------------------------------
 
-        const accountRef =
-            getDeviceAccountRef();
-
-
-        const snapshot =
-            await getDoc(
-                accountRef
-            );
-
+        const accountRef = getDeviceAccountRef();
+        const snapshot = await getDoc(accountRef);
 
         if (!snapshot.exists()) {
-
-            loginPasswordInput.value = "";
-
-            showToast(
-                "No Payrol account exists on this device"
-            );
-
+            showToast("Account not found. Please create an account first.");
             return;
         }
 
+        const savedUser = snapshot.data();
 
-        const savedUser =
-            snapshot.data();
+        // Make sure the account belongs to this device.
+        if (
+            savedUser.deviceId &&
+            savedUser.deviceId !== payzaDeviceId
+        ) {
+            showToast("This account does not belong to this device.");
+            return;
+        }
 
+        // ----------------------------------------------------
+        // PASSWORD CHECK
+        // ----------------------------------------------------
+
+        const enteredPasswordHash = await hashPayzaPassword(password);
 
         if (
-            savedUser.deviceId !==
-            payzaDeviceId
+            savedUser.passwordHash &&
+            savedUser.passwordHash !== enteredPasswordHash
         ) {
-
-            loginPasswordInput.value = "";
-
-            showToast(
-                "This account does not belong to this device"
-            );
-
+            showToast("Incorrect password.");
             return;
         }
 
+        // ----------------------------------------------------
+        // LOGIN SUCCESS
+        // ----------------------------------------------------
 
-        const enteredPasswordHash =
-            await hashPayzaPassword(
-                password
-            );
-
-
-        if (
-            enteredPasswordHash !==
-            savedUser.passwordHash
-        ) {
-
-            loginPasswordInput.value = "";
-
-            showToast(
-                "Incorrect password"
-            );
-
-            loginPasswordInput.focus();
-
-            return;
-        }
-
-
-        /* =====================================================
-           SUCCESSFUL NORMAL LOGIN
-        ===================================================== */
-
-        user = {
-
-            ...user,
-
+        currentUser = {
             ...savedUser,
-
-            balance:
-                Number(
-                    savedUser.balance || 0
-                ),
-
-            savings:
-                savedUser.savings || {
-
-                    amount: 0,
-                    interest: 0,
-                    dailyInterest: 0,
-                    rate: 0,
-                    createdAt: null,
-                    lastInterestAt: null
-
-                }
-
+            deviceId: payzaDeviceId
         };
 
+        localStorage.setItem(
+            PAYZA_ACCOUNT_CREATED_KEY,
+            "true"
+        );
 
+        localStorage.setItem(
+            "payzaDemoUser",
+            JSON.stringify(currentUser)
+        );
+
+        // Refresh account information
         updateUserUI();
 
-        updateBalanceUI();
+        // Start realtime account listener
+        if (typeof listenForPayzaAccount === "function") {
+            listenForPayzaAccount();
+        } else if (typeof listenToPayzaAccount === "function") {
+            listenToPayzaAccount();
+        }
 
-        updateSavingsUI();
+        // Show application
+        const loginView = document.getElementById("loginView");
+        const signupView = document.getElementById("signupView");
+        const appView = document.getElementById("appView");
 
-        updateSavingsAccountStatus(
-            savedUser
-        );
+        if (loginView) loginView.style.display = "none";
+        if (signupView) signupView.style.display = "none";
+        if (appView) appView.style.display = "block";
 
-
-        listenToPayzaAccount();
-
-
-        authScreen.classList.add(
-            "hidden"
-        );
-
-
-        appScreen.classList.remove(
-            "hidden"
-        );
-
-
-        loginPasswordInput.value = "";
-
-
-        showToast(
-            "Welcome back"
-        );
-
-
-        setTimeout(
-            () => {
-
-                showReferralPopup();
-
-            },
-            450
-        );
-
+        showToast("Login successful.");
 
     } catch (error) {
+        console.error("Login error:", error);
 
-        console.error(
-            "Login error:",
-            error
-        );
-
-        showToast(
-            "Unable to login. Please try again."
-        );
-
-    } finally {
-
-        loginBtn.disabled = false;
+        if (error?.code === "permission-denied") {
+            showToast(
+                "Unable to access your account. Please refresh and try again."
+            );
+        } else {
+            showToast("Unable to login, please try again.");
+        }
     }
 }
 
