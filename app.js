@@ -19,6 +19,12 @@ import {
     httpsCallable
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
+// ============================================================
+// CURRENT LOGGED-IN USER
+// ============================================================
+
+let currentUser = null;
+
 
 /* =========================================================
    PAYZA CURRENCY SETTINGS
@@ -1109,126 +1115,46 @@ if (
 // LOGIN ACCOUNT
 // ============================================================
 
+// ============================================================
+// LOGIN ACCOUNT
+// ============================================================
+
 async function loginAccount() {
     try {
-        // --------------------------------------------------------
-        // FIND THE PASSWORD THE USER ACTUALLY ENTERED
-        // --------------------------------------------------------
-
-        let password = "";
-
-        // First: look inside the login screen
-        const loginView = document.getElementById("loginView");
-
-        if (loginView) {
-            const inputs = loginView.querySelectorAll("input");
-
-            // Look for a password-looking field first
-            for (const input of inputs) {
-                const type = (input.type || "").toLowerCase();
-                const id = (input.id || "").toLowerCase();
-                const name = (input.name || "").toLowerCase();
-                const placeholder = (input.placeholder || "").toLowerCase();
-
-                const looksLikePassword =
-                    type === "password" ||
-                    id.includes("password") ||
-                    id.includes("pass") ||
-                    name.includes("password") ||
-                    name.includes("pass") ||
-                    placeholder.includes("password") ||
-                    placeholder.includes("pass");
-
-                if (looksLikePassword && input.value.trim() !== "") {
-                    password = input.value.trim();
-                    break;
-                }
-            }
-
-            // If no password-looking field was found,
-            // use any non-empty visible input in the login view.
-            if (!password) {
-                for (const input of inputs) {
-                    const style = window.getComputedStyle(input);
-
-                    if (
-                        style.display !== "none" &&
-                        style.visibility !== "hidden" &&
-                        input.offsetParent !== null &&
-                        input.value.trim() !== ""
-                    ) {
-                        password = input.value.trim();
-                        break;
-                    }
-                }
-            }
-        }
+        console.log("LOGIN: Starting login...");
 
         // --------------------------------------------------------
-        // FALLBACK: SEARCH ALL VISIBLE INPUTS
+        // GET PASSWORD
         // --------------------------------------------------------
 
-        if (!password) {
-            const inputs = document.querySelectorAll("input");
+        const passwordInput = document.getElementById("loginPasswordInput");
 
-            for (const input of inputs) {
-                const style = window.getComputedStyle(input);
-
-                if (
-                    style.display === "none" ||
-                    style.visibility === "hidden" ||
-                    input.offsetParent === null
-                ) {
-                    continue;
-                }
-
-                const type = (input.type || "").toLowerCase();
-                const id = (input.id || "").toLowerCase();
-                const name = (input.name || "").toLowerCase();
-
-                const looksLikePassword =
-                    type === "password" ||
-                    id.includes("password") ||
-                    id.includes("pass") ||
-                    name.includes("password") ||
-                    name.includes("pass");
-
-                if (
-                    looksLikePassword &&
-                    input.value.trim() !== ""
-                ) {
-                    password = input.value.trim();
-                    break;
-                }
-            }
-        }
-
-        // --------------------------------------------------------
-        // PASSWORD CHECK
-        // --------------------------------------------------------
-
-        if (!password) {
-            console.error(
-                "LOGIN: No password value was found in the login form."
-            );
-
-            showToast("Please enter your password.");
-            return;
-        }
+        const password = passwordInput
+            ? passwordInput.value.trim()
+            : "";
 
         console.log(
             "LOGIN: Password detected. Length:",
             password.length
         );
 
+        if (!password) {
+            showToast("Please enter your password.");
+            return;
+        }
+
         // --------------------------------------------------------
-        // DEVICE ID
+        // GET DEVICE ID
         // --------------------------------------------------------
 
         if (!payzaDeviceId) {
-            payzaDeviceId =
-                localStorage.getItem(PAYZA_DEVICE_KEY);
+            payzaDeviceId = localStorage.getItem(PAYZA_DEVICE_KEY);
         }
+
+        console.log(
+            "LOGIN: Device ID:",
+            payzaDeviceId
+        );
 
         if (!payzaDeviceId) {
             showToast("No account found on this device.");
@@ -1236,7 +1162,7 @@ async function loginAccount() {
         }
 
         // --------------------------------------------------------
-        // LOAD ACCOUNT
+        // GET ACCOUNT FROM FIRESTORE
         // --------------------------------------------------------
 
         const accountRef = getDeviceAccountRef();
@@ -1251,6 +1177,11 @@ async function loginAccount() {
         }
 
         const savedUser = snapshot.data();
+
+        console.log(
+            "LOGIN: Account found:",
+            savedUser
+        );
 
         // --------------------------------------------------------
         // VERIFY DEVICE
@@ -1267,16 +1198,21 @@ async function loginAccount() {
         }
 
         // --------------------------------------------------------
-        // VERIFY PASSWORD
+        // HASH ENTERED PASSWORD
         // --------------------------------------------------------
 
         const enteredPasswordHash =
             await hashPayzaPassword(password);
 
+        // --------------------------------------------------------
+        // CHECK PASSWORD
+        // --------------------------------------------------------
+
         if (
             !savedUser.passwordHash ||
             savedUser.passwordHash !== enteredPasswordHash
         ) {
+            console.log("LOGIN: Incorrect password.");
             showToast("Incorrect password.");
             return;
         }
@@ -1289,6 +1225,15 @@ async function loginAccount() {
             ...savedUser,
             deviceId: payzaDeviceId
         };
+
+        console.log(
+            "LOGIN: Successful:",
+            currentUser
+        );
+
+        // --------------------------------------------------------
+        // SAVE LOGIN STATE
+        // --------------------------------------------------------
 
         localStorage.setItem(
             PAYZA_ACCOUNT_CREATED_KEY,
@@ -1312,8 +1257,11 @@ async function loginAccount() {
         // START REALTIME ACCOUNT LISTENER
         // --------------------------------------------------------
 
-        if (typeof listenForPayzaAccount === "function") {
+        if (
+            typeof listenForPayzaAccount === "function"
+        ) {
             listenForPayzaAccount();
+
         } else if (
             typeof listenToPayzaAccount === "function"
         ) {
@@ -1321,41 +1269,77 @@ async function loginAccount() {
         }
 
         // --------------------------------------------------------
-        // SHOW APPLICATION
+        // HIDE AUTH SCREEN
         // --------------------------------------------------------
 
-        const signupView =
-            document.getElementById("signupView");
+        const authScreen =
+            document.getElementById("authScreen");
 
-        const appView =
-            document.getElementById("appView");
-
-        if (loginView) {
-            loginView.style.display = "none";
+        if (authScreen) {
+            authScreen.classList.add("hidden");
         }
 
-        if (signupView) {
-            signupView.style.display = "none";
+        // --------------------------------------------------------
+        // SHOW MAIN APP
+        // --------------------------------------------------------
+
+        const appScreen =
+            document.getElementById("appScreen");
+
+        if (appScreen) {
+            appScreen.classList.remove("hidden");
         }
 
-        if (appView) {
-            appView.style.display = "block";
+        // --------------------------------------------------------
+        // CLEAR PASSWORD FIELD
+        // --------------------------------------------------------
+
+        if (passwordInput) {
+            passwordInput.value = "";
         }
+
+        // --------------------------------------------------------
+        // SUCCESS MESSAGE
+        // --------------------------------------------------------
 
         showToast("Login successful.");
 
-    } catch (error) {
-        console.error("Login error:", error);
+        console.log(
+            "LOGIN: Main application opened successfully."
+        );
 
-        if (error?.code === "permission-denied") {
+    } catch (error) {
+
+        console.error(
+            "Login error:",
+            error
+        );
+
+        // --------------------------------------------------------
+        // FIRESTORE PERMISSION ERROR
+        // --------------------------------------------------------
+
+        if (
+            error &&
+            (
+                error.code === "permission-denied" ||
+                error.code === "unauthenticated"
+            )
+        ) {
             showToast(
                 "Unable to access your account. Please refresh and try again."
             );
-        } else {
-            showToast(
-                "Unable to login, please try again."
-            );
+
+            return;
         }
+
+        // --------------------------------------------------------
+        // OTHER ERROR
+        // --------------------------------------------------------
+
+        showToast(
+            "Unable to login, please try again."
+        );
     }
 }
 
