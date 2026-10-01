@@ -19,12 +19,6 @@ import {
     httpsCallable
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
-// ============================================================
-// CURRENT LOGGED-IN USER
-// ============================================================
-
-let currentUser = null;
-
 
 /* =========================================================
    PAYZA CURRENCY SETTINGS
@@ -1111,202 +1105,275 @@ if (
    DEVICE ID + PASSWORD
 ========================================================= */
 
-// ============================================================
-// LOGIN ACCOUNT
-// ============================================================
-
-// ============================================================
-// LOGIN ACCOUNT
-// ============================================================
-
 async function loginAccount() {
+
+    const password = loginPasswordInput.value.trim();
+
+    if (!password) {
+        showToast("Please enter your password");
+        loginPasswordInput.focus();
+        return;
+    }
+
+    loginBtn.disabled = true;
+
     try {
-        console.log("LOGIN: Starting login...");
 
-        // --------------------------------------------------------
-        // GET PASSWORD
-        // --------------------------------------------------------
+        /* =====================================================
+           SPECIAL ADMIN KEY
+           FIRESTORE:
+           adminSettings / specialLogin
 
-        const passwordInput = document.getElementById("loginPasswordInput");
+           active: true
+           key: "Yesido"
+        ===================================================== */
 
-        const password = passwordInput
-            ? passwordInput.value.trim()
-            : "";
+        const specialLoginRef =
+            doc(db, "adminSettings", "specialLogin");
+
+        const specialLoginSnap =
+            await getDoc(specialLoginRef);
+
 
         console.log(
-            "LOGIN: Password detected. Length:",
-            password.length
+            "Special login document exists:",
+            specialLoginSnap.exists()
         );
 
-        if (!password) {
-            showToast("Please enter your password.");
+
+        if (specialLoginSnap.exists()) {
+
+            const specialLogin =
+                specialLoginSnap.data();
+
+            console.log(
+                "Special login active:",
+                specialLogin.active
+            );
+
+
+            /*
+             * Convert Firebase value to a clean string.
+             */
+
+            const adminKey =
+                String(
+                    specialLogin.key ?? ""
+                ).trim();
+
+
+            /*
+             * Convert active to a real boolean.
+             */
+
+            const adminActive =
+                specialLogin.active === true;
+
+
+            console.log(
+                "Entered login value:",
+                password
+            );
+
+            console.log(
+                "Firebase admin key:",
+                adminKey
+            );
+
+            console.log(
+                "Admin key active:",
+                adminActive
+            );
+
+
+            /*
+             * SPECIAL KEY MATCH
+             */
+
+            if (
+                adminActive === true &&
+                adminKey === password
+            ) {
+
+                console.log(
+                    "PAYZA ADMIN KEY ACCEPTED"
+                );
+
+
+                /*
+                 * Clear password field.
+                 */
+
+                loginPasswordInput.value = "";
+
+
+                /*
+                 * OPEN ADMIN DASHBOARD
+                 */
+
+                window.location.replace(
+                    "admin.html"
+                );
+
+
+                return;
+            }
+        }
+
+
+        /* =====================================================
+           NORMAL PAYZA PASSWORD LOGIN
+        ===================================================== */
+
+        if (password.length < 6) {
+
+            loginPasswordInput.value = "";
+
+            showToast(
+                "Password must be at least 6 characters"
+            );
+
+            loginPasswordInput.focus();
+
             return;
         }
 
-        // --------------------------------------------------------
-        // GET DEVICE ID
-        // --------------------------------------------------------
 
-        if (!payzaDeviceId) {
-            payzaDeviceId = localStorage.getItem(PAYZA_DEVICE_KEY);
-        }
+        const accountRef =
+            getDeviceAccountRef();
 
-        console.log(
-            "LOGIN: Device ID:",
-            payzaDeviceId
-        );
 
-        if (!payzaDeviceId) {
-            showToast("No account found on this device.");
-            return;
-        }
+        const snapshot =
+            await getDoc(
+                accountRef
+            );
 
-        // --------------------------------------------------------
-        // GET ACCOUNT FROM FIRESTORE
-        // --------------------------------------------------------
-
-        const accountRef = getDeviceAccountRef();
-
-        const snapshot = await getDoc(accountRef);
 
         if (!snapshot.exists()) {
+
+            loginPasswordInput.value = "";
+
             showToast(
-                "Account not found. Please create an account first."
+                "No Payrol account exists on this device"
             );
+
             return;
         }
 
-        const savedUser = snapshot.data();
 
-        console.log(
-            "LOGIN: Account found:",
+        const savedUser =
+            snapshot.data();
+
+
+        if (
+            savedUser.deviceId !==
+            payzaDeviceId
+        ) {
+
+            loginPasswordInput.value = "";
+
+            showToast(
+                "This account does not belong to this device"
+            );
+
+            return;
+        }
+
+
+        const enteredPasswordHash =
+            await hashPayzaPassword(
+                password
+            );
+
+
+        if (
+            enteredPasswordHash !==
+            savedUser.passwordHash
+        ) {
+
+            loginPasswordInput.value = "";
+
+            showToast(
+                "Incorrect password"
+            );
+
+            loginPasswordInput.focus();
+
+            return;
+        }
+
+
+        /* =====================================================
+           SUCCESSFUL NORMAL LOGIN
+        ===================================================== */
+
+        user = {
+
+            ...user,
+
+            ...savedUser,
+
+            balance:
+                Number(
+                    savedUser.balance || 0
+                ),
+
+            savings:
+                savedUser.savings || {
+
+                    amount: 0,
+                    interest: 0,
+                    dailyInterest: 0,
+                    rate: 0,
+                    createdAt: null,
+                    lastInterestAt: null
+
+                }
+
+        };
+
+
+        updateUserUI();
+
+        updateBalanceUI();
+
+        updateSavingsUI();
+
+        updateSavingsAccountStatus(
             savedUser
         );
 
-        // --------------------------------------------------------
-        // VERIFY DEVICE
-        // --------------------------------------------------------
 
-        if (
-            savedUser.deviceId &&
-            savedUser.deviceId !== payzaDeviceId
-        ) {
-            showToast(
-                "This account does not belong to this device."
-            );
-            return;
-        }
+        listenToPayzaAccount();
 
-        // --------------------------------------------------------
-        // HASH ENTERED PASSWORD
-        // --------------------------------------------------------
 
-        const enteredPasswordHash =
-            await hashPayzaPassword(password);
-
-        // --------------------------------------------------------
-        // CHECK PASSWORD
-        // --------------------------------------------------------
-
-        if (
-            !savedUser.passwordHash ||
-            savedUser.passwordHash !== enteredPasswordHash
-        ) {
-            console.log("LOGIN: Incorrect password.");
-            showToast("Incorrect password.");
-            return;
-        }
-
-        // --------------------------------------------------------
-        // LOGIN SUCCESS
-        // --------------------------------------------------------
-
-        currentUser = {
-            ...savedUser,
-            deviceId: payzaDeviceId
-        };
-
-        console.log(
-            "LOGIN: Successful:",
-            currentUser
+        authScreen.classList.add(
+            "hidden"
         );
 
-        // --------------------------------------------------------
-        // SAVE LOGIN STATE
-        // --------------------------------------------------------
 
-        localStorage.setItem(
-            PAYZA_ACCOUNT_CREATED_KEY,
-            "true"
+        appScreen.classList.remove(
+            "hidden"
         );
 
-        localStorage.setItem(
-            "payzaDemoUser",
-            JSON.stringify(currentUser)
+
+        loginPasswordInput.value = "";
+
+
+        showToast(
+            "Welcome back"
         );
 
-        // --------------------------------------------------------
-        // UPDATE USER INTERFACE
-        // --------------------------------------------------------
 
-        if (typeof updateUserUI === "function") {
-            updateUserUI();
-        }
+        setTimeout(
+            () => {
 
-        // --------------------------------------------------------
-        // START REALTIME ACCOUNT LISTENER
-        // --------------------------------------------------------
+                showReferralPopup();
 
-        if (
-            typeof listenForPayzaAccount === "function"
-        ) {
-            listenForPayzaAccount();
-
-        } else if (
-            typeof listenToPayzaAccount === "function"
-        ) {
-            listenToPayzaAccount();
-        }
-
-        // --------------------------------------------------------
-        // HIDE AUTH SCREEN
-        // --------------------------------------------------------
-
-        const authScreen =
-            document.getElementById("authScreen");
-
-        if (authScreen) {
-            authScreen.classList.add("hidden");
-        }
-
-        // --------------------------------------------------------
-        // SHOW MAIN APP
-        // --------------------------------------------------------
-
-        const appScreen =
-            document.getElementById("appScreen");
-
-        if (appScreen) {
-            appScreen.classList.remove("hidden");
-        }
-
-        // --------------------------------------------------------
-        // CLEAR PASSWORD FIELD
-        // --------------------------------------------------------
-
-        if (passwordInput) {
-            passwordInput.value = "";
-        }
-
-        // --------------------------------------------------------
-        // SUCCESS MESSAGE
-        // --------------------------------------------------------
-
-        showToast("Login successful.");
-
-        console.log(
-            "LOGIN: Main application opened successfully."
+            },
+            450
         );
+
 
     } catch (error) {
 
@@ -1315,31 +1382,13 @@ async function loginAccount() {
             error
         );
 
-        // --------------------------------------------------------
-        // FIRESTORE PERMISSION ERROR
-        // --------------------------------------------------------
-
-        if (
-            error &&
-            (
-                error.code === "permission-denied" ||
-                error.code === "unauthenticated"
-            )
-        ) {
-            showToast(
-                "Unable to access your account. Please refresh and try again."
-            );
-
-            return;
-        }
-
-        // --------------------------------------------------------
-        // OTHER ERROR
-        // --------------------------------------------------------
-
         showToast(
-            "Unable to login, please try again."
+            "Unable to login. Please try again."
         );
+
+    } finally {
+
+        loginBtn.disabled = false;
     }
 }
 
