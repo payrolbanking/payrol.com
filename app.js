@@ -32,7 +32,7 @@ import {
 
    IMPORTANT:
    This controls EXTERNAL MONEY only.
-   Payza Credit remains ȼ̲.
+   Payrol Credit remains ȼ̲.
 ========================================================= */
 
 let payzaAccountNumberCost =
